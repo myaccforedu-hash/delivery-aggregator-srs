@@ -1,0 +1,16 @@
+name: генерация юмл диаграмм
+
+on:
+  push:
+    paths:
+      - 'diagrams/*.puml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Generate diagrams
+        uses: plantuml/plantuml-action@v1
+        with:
+          files: 'diagrams/*.puml'

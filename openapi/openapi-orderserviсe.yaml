@@ -1,31 +1,46 @@
 openapi: 3.0.3
+
 info:
   title: Order Service API
   version: 1.0.0
   description: |
     API для управления заказами транспортных услуг.
-    Поддерживает асинхронное создание заказа, выбор доставки,
-    отмену и управление статусами.
+
+    Поддерживает:
+    - асинхронное создание заказа
+    - обновление заказа
+    - отмену заказа
+    - получение статуса через polling
+    - HATEOAS
 
 servers:
-  - url: https://api.example.com
+  - url: https://api.delivplus.com
 
 paths:
 
   /v1/orders:
+
     post:
       summary: Создание заказа (асинхронно)
-      description: Асинхронное создание заказа с использованием polling
+      description: |
+        Создает заказ в асинхронном режиме.
+
+        Возвращает 202 Accepted.
+        Обработка выполняется асинхронно, статус отслеживается через polling.
       operationId: createOrder
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - in: header
           name: Idempotency-Key
           required: true
-          description: Уникальный ключ идемпотентности
+          description: |
+            Уникальный ключ идемпотентности.
+
+            Используется для предотвращения дублирования заказов.
           schema:
             type: string
             maxLength: 64
+            example: "idemp-123"
       requestBody:
         required: true
         description: Данные заказа
@@ -35,19 +50,26 @@ paths:
               $ref: '#/components/schemas/CreateOrderRequest'
       responses:
         '202':
-          description: Принято в обработку
+          description: |
+            Принято в обработку.
+
+            Заказ создается асинхронно.
           headers:
             Location:
+              description: URL для проверки статуса
               schema:
                 type: string
-                example: /v1/orders/123/status
+                example: "/v1/orders/123/status"
             Retry-After:
+              description: Время ожидания перед повторным запросом
               schema:
                 type: integer
                 example: 3
             X-Correlation-Id:
+              description: Идентификатор трассировки
               schema:
                 type: string
+                example: "corr-123"
           content:
             application/json:
               schema:
@@ -58,8 +80,10 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
 
   /v1/orders/{orderId}:
+
     get:
       summary: Получить заказ
+      description: Возвращает информацию о заказе
       operationId: getOrder
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -71,6 +95,7 @@ paths:
             X-Correlation-Id:
               schema:
                 type: string
+                example: "corr-123"
           content:
             application/json:
               schema:
@@ -78,23 +103,21 @@ paths:
 
     patch:
       summary: Обновить заказ
+      description: Обновляет параметры заказа
       operationId: updateOrder
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/OrderId'
       requestBody:
         required: true
+        description: Данные для обновления
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateOrderRequest'
       responses:
         '200':
-          description: Updated
-          headers:
-            X-Correlation-Id:
-              schema:
-                type: string
+          description: Заказ обновлен
           content:
             application/json:
               schema:
@@ -106,34 +129,39 @@ paths:
 
     delete:
       summary: Отмена заказа
+      description: |
+        Отменяет заказ.
+
+        Если заказ уже в финальном состоянии — вернет ошибку.
       operationId: cancelOrder
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/OrderId'
       responses:
         '204':
-          description: Deleted
+          description: Заказ отменен
 
   /v1/orders/{orderId}/status:
+
     get:
-      summary: Polling статуса
+      summary: Polling статуса заказа
+      description: |
+        Используется для отслеживания статуса асинхронного заказа.
+
+        Поддерживает long-polling.
       operationId: pollStatus
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/OrderId'
       responses:
         '200':
-          description: Готово
-          headers:
-            X-Correlation-Id:
-              schema:
-                type: string
+          description: Статус готов
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
         '204':
-          description: В процессе
+          description: В процессе обработки
         '408':
           $ref: '#/components/responses/RequestTimeout'
         '424':
@@ -157,14 +185,17 @@ components:
       name: orderId
       in: path
       required: true
+      description: Уникальный идентификатор заказа
       schema:
         type: string
         pattern: '^[a-zA-Z0-9\-]{1,36}$'
+        example: "123"
 
   schemas:
 
     CreateOrderRequest:
       type: object
+      description: Запрос на создание заказа
       additionalProperties: false
       required:
         - address
@@ -172,44 +203,54 @@ components:
       properties:
         address:
           type: string
+          description: Адрес доставки
           maxLength: 255
           example: "Россия, г. Краснодар, ул. Красная, д. 25, кв. 12"
         items:
           type: array
+          description: Список товаров
           minItems: 1
           maxItems: 20
           items:
             type: string
             maxLength: 100
+            example: "Телефон"
           example:
             - "Телефон"
             - "Ноутбук"
 
     UpdateOrderRequest:
       type: object
+      description: Запрос на обновление заказа
       additionalProperties: false
       properties:
         deliveryProviderId:
           type: string
           maxLength: 50
+          description: Идентификатор службы доставки
           example: "cdek"
 
     OrderAsyncResponse:
       type: object
+      description: Ответ при асинхронном создании
       properties:
         orderId:
           type: string
+          example: "123"
         status:
           type: string
           enum: [CREATED, PROCESSING]
+          example: "CREATED"
         _links:
           $ref: '#/components/schemas/Links'
 
     Order:
       type: object
+      description: Сущность заказа
       properties:
         orderId:
           type: string
+          example: "123"
         status:
           type: string
           enum:
@@ -218,9 +259,11 @@ components:
             - PAID
             - PAYMENT_FAILED
             - CANCELLED
+          example: "CREATED"
         deliveryProviderId:
           type: string
           nullable: true
+          example: "cdek"
         address:
           type: string
           example: "Россия, г. Новороссийск, ул. Советов, д. 10, кв. 45"
@@ -229,6 +272,7 @@ components:
 
     Links:
       type: object
+      description: HATEOAS ссылки
       properties:
         self:
           $ref: '#/components/schemas/Link'
@@ -239,24 +283,62 @@ components:
 
     Link:
       type: object
+      description: Гипермедиа ссылка
       properties:
         href:
           type: string
+          example: "/v1/orders/123"
         method:
           type: string
           enum: [GET, PATCH, DELETE]
+          example: "GET"
 
   responses:
 
     BadRequest:
       description: Ошибка валидации
+      content:
+        application/json:
+          example:
+            code: 400
+            message: "Invalid request"
+
     Conflict:
-      description: Конфликт
+      description: Конфликт состояния
+      content:
+        application/json:
+          example:
+            code: 409
+            message: "Order already completed"
+
     Locked:
       description: Ресурс заблокирован
+      content:
+        application/json:
+          example:
+            code: 423
+            message: "Resource is locked"
+
     TooManyRequests:
       description: Превышен лимит запросов
+      content:
+        application/json:
+          example:
+            code: 429
+            message: "Too many requests"
+
     RequestTimeout:
       description: Таймаут
+      content:
+        application/json:
+          example:
+            code: 408
+            message: "Timeout"
+
     FailedDependency:
       description: Ошибка внешнего сервиса
+      content:
+        application/json:
+          example:
+            code: 424
+            message: "External service error"

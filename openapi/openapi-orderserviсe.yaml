@@ -1,0 +1,262 @@
+openapi: 3.0.3
+info:
+  title: Order Service API
+  version: 1.0.0
+  description: |
+    API для управления заказами транспортных услуг.
+    Поддерживает асинхронное создание заказа, выбор доставки,
+    отмену и управление статусами.
+
+servers:
+  - url: https://api.example.com
+
+paths:
+
+  /v1/orders:
+    post:
+      summary: Создание заказа (асинхронно)
+      description: Асинхронное создание заказа с использованием polling
+      operationId: createOrder
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Уникальный ключ идемпотентности
+          schema:
+            type: string
+            maxLength: 64
+      requestBody:
+        required: true
+        description: Данные заказа
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '202':
+          description: Принято в обработку
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /v1/orders/123/status
+            Retry-After:
+              schema:
+                type: integer
+                example: 3
+            X-Correlation-Id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderAsyncResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/orders/{orderId}:
+    get:
+      summary: Получить заказ
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: OK
+          headers:
+            X-Correlation-Id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+
+    patch:
+      summary: Обновить заказ
+      operationId: updateOrder
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderRequest'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            X-Correlation-Id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '423':
+          $ref: '#/components/responses/Locked'
+
+    delete:
+      summary: Отмена заказа
+      operationId: cancelOrder
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '204':
+          description: Deleted
+
+  /v1/orders/{orderId}/status:
+    get:
+      summary: Polling статуса
+      operationId: pollStatus
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Готово
+          headers:
+            X-Correlation-Id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '204':
+          description: В процессе
+        '408':
+          $ref: '#/components/responses/RequestTimeout'
+        '424':
+          $ref: '#/components/responses/FailedDependency'
+
+components:
+
+  parameters:
+
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: Идентификатор трассировки запроса
+      schema:
+        type: string
+        maxLength: 64
+        example: "corr-123"
+
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-zA-Z0-9\-]{1,36}$'
+
+  schemas:
+
+    CreateOrderRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - address
+        - items
+      properties:
+        address:
+          type: string
+          maxLength: 255
+          example: "Россия, г. Краснодар, ул. Красная, д. 25, кв. 12"
+        items:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 100
+          example:
+            - "Телефон"
+            - "Ноутбук"
+
+    UpdateOrderRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        deliveryProviderId:
+          type: string
+          maxLength: 50
+          example: "cdek"
+
+    OrderAsyncResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+        status:
+          type: string
+          enum: [CREATED, PROCESSING]
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    Order:
+      type: object
+      properties:
+        orderId:
+          type: string
+        status:
+          type: string
+          enum:
+            - CREATED
+            - DELIVERY_SELECTED
+            - PAID
+            - PAYMENT_FAILED
+            - CANCELLED
+        deliveryProviderId:
+          type: string
+          nullable: true
+        address:
+          type: string
+          example: "Россия, г. Новороссийск, ул. Советов, д. 10, кв. 45"
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    Links:
+      type: object
+      properties:
+        self:
+          $ref: '#/components/schemas/Link'
+        update:
+          $ref: '#/components/schemas/Link'
+        cancel:
+          $ref: '#/components/schemas/Link'
+
+    Link:
+      type: object
+      properties:
+        href:
+          type: string
+        method:
+          type: string
+          enum: [GET, PATCH, DELETE]
+
+  responses:
+
+    BadRequest:
+      description: Ошибка валидации
+    Conflict:
+      description: Конфликт
+    Locked:
+      description: Ресурс заблокирован
+    TooManyRequests:
+      description: Превышен лимит запросов
+    RequestTimeout:
+      description: Таймаут
+    FailedDependency:
+      description: Ошибка внешнего сервиса

@@ -100,6 +100,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
     patch:
       summary: Обновить заказ
@@ -108,6 +110,14 @@ paths:
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
         - $ref: '#/components/parameters/OrderId'
+        - in: header
+          name: Idempotency-Key
+          required: false
+          description: Добавлен Ключ идемпотентности для безопасного повторения запроса
+          schema:
+            type: string
+            maxLength: 64
+            example: "idemp-123"
       requestBody:
         required: true
         description: Данные для обновления
@@ -122,6 +132,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
         '423':
@@ -132,7 +146,7 @@ paths:
       description: |
         Отменяет заказ.
 
-        Если заказ уже в финальном состоянии — вернет ошибку.
+        Если заказ уже в финальном состоянии - вернет ошибку.
       operationId: cancelOrder
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -140,6 +154,10 @@ paths:
       responses:
         '204':
           description: Заказ отменен
+        '404':
+           $ref: '#/components/responses/NotFound'
+        '409':
+           $ref: '#/components/responses/Conflict'
 
   /v1/orders/{orderId}/status:
 
@@ -162,6 +180,10 @@ paths:
                 $ref: '#/components/schemas/Order'
         '204':
           description: В процессе обработки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PollingResponse'
         '408':
           $ref: '#/components/responses/RequestTimeout'
         '424':
@@ -213,6 +235,7 @@ components:
           maxItems: 20
           items:
             type: string
+            description: Название товара
             maxLength: 100
             example: "Телефон"
           example:
@@ -229,20 +252,31 @@ components:
           maxLength: 50
           description: Идентификатор службы доставки
           example: "cdek"
+      minProperties: 1
 
     OrderAsyncResponse:
       type: object
-      description: Ответ при асинхронном создании
+      description: Ответ при асинхронном создании заказа
+      required:
+       - orderId
+       - status
+       - _links
+      additionalProperties: false
       properties:
         orderId:
           type: string
+          description: Идентификатор созданного заказа
           example: "123"
         status:
           type: string
-          enum: [CREATED, PROCESSING]
+          description: Статус обработки заказа
+          enum:
+           - CREATED
+           - PROCESSING
           example: "CREATED"
         _links:
-          $ref: '#/components/schemas/Links'
+           $ref: '#/components/schemas/Links'
+          
 
     Order:
       type: object
@@ -250,36 +284,105 @@ components:
       properties:
         orderId:
           type: string
+          description: Уникальный идентификатор заказа
           example: "123"
         status:
           type: string
+          description: Текущий статус заказа
           enum:
             - CREATED
             - DELIVERY_SELECTED
             - PAID
             - PAYMENT_FAILED
             - CANCELLED
+          default: "CREATED"
           example: "CREATED"
         deliveryProviderId:
           type: string
-          nullable: true
+          description: Идентификатор службы доставки
           example: "cdek"
         address:
           type: string
+          description: Адрес доставки
           example: "Россия, г. Новороссийск, ул. Советов, д. 10, кв. 45"
+        items:
+          type: array
+          description: Список товаров в заказе
+          items:
+            type: string
+            maxLength: 100
+          example:
+             - "Телефон"
+             - "Ноутбук"
         _links:
           $ref: '#/components/schemas/Links'
+    
+    PollingResponse:
+      type: object
+      description: Ответ при незавершенной обработке заказа
+      required:
+       - status
+       - _links
+      properties:
+        status:
+          type: string
+          description: Текущий статус обработки
+          example: PROCESSING
+        _links:
+          $ref: '#/components/schemas/Links'
+    
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+         type: integer
+         description: HTTP статус или код ошибки
+         example: 404
+        message:
+         type: string
+         description: Описание ошибки
+         example: Ресурс не найден
+        details:
+          type: string
+          description: Дополнительная техническая информация об ошибке (например, детали валидации)
+          example: Order not found
 
     Links:
       type: object
       description: HATEOAS ссылки
+      required:
+       - href
+       - method
       properties:
+        href:
+          type: string
+          description: URL ресурса
+          example: "/v1/orders/123"
+        method:
+          type: string
+          enum: [GET, PATCH, DELETE]
+          description: HTTP метод
+          example: GET
         self:
-          $ref: '#/components/schemas/Link'
+          allOf:
+            - $ref: '#/components/schemas/Link'
+          description: Ссылка на текущий ресурс
         update:
-          $ref: '#/components/schemas/Link'
+          allOf:
+            - $ref: '#/components/schemas/Link'
+          description: Ссылка для обновления заказа
         cancel:
-          $ref: '#/components/schemas/Link'
+          allOf:
+            - $ref: '#/components/schemas/Link'
+          description: Ссылка для отмены заказа
+        status: 
+          allOf:
+            - $ref: '#/components/schemas/Link'
+          description: Ссылка для получения статуса заказа
+          
 
     Link:
       type: object
@@ -287,9 +390,11 @@ components:
       properties:
         href:
           type: string
+          description: URL ресурса
           example: "/v1/orders/123"
         method:
           type: string
+          description: HTTP метод для перехода по ссылке
           enum: [GET, PATCH, DELETE]
           example: "GET"
 
@@ -299,6 +404,8 @@ components:
       description: Ошибка валидации
       content:
         application/json:
+          schema: 
+            $ref: '#/components/schemas/Error'
           example:
             code: 400
             message: "Invalid request"
@@ -307,6 +414,8 @@ components:
       description: Конфликт состояния
       content:
         application/json:
+          schema: 
+            $ref: '#/components/schemas/Error'
           example:
             code: 409
             message: "Order already completed"
@@ -315,6 +424,8 @@ components:
       description: Ресурс заблокирован
       content:
         application/json:
+          schema: 
+            $ref: '#/components/schemas/Error'
           example:
             code: 423
             message: "Resource is locked"
@@ -323,6 +434,8 @@ components:
       description: Превышен лимит запросов
       content:
         application/json:
+          schema: 
+            $ref: '#/components/schemas/Error'
           example:
             code: 429
             message: "Too many requests"
@@ -331,6 +444,8 @@ components:
       description: Таймаут
       content:
         application/json:
+          schema: 
+            $ref: '#/components/schemas/Error'
           example:
             code: 408
             message: "Timeout"
@@ -339,6 +454,18 @@ components:
       description: Ошибка внешнего сервиса
       content:
         application/json:
+          schema: 
+            $ref: '#/components/schemas/Error'
           example:
             code: 424
             message: "External service error"
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 404
+            message: "Not Found"

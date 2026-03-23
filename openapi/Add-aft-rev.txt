@@ -1,0 +1,191 @@
+итак по пунктам:
+1. добавлен Idempotency-Key в PATCH
+
+
+
+ - in: header
+          name: Idempotency-Key
+          required: false
+          description: Добавлен Ключ идемпотентности для безопасного повторения запроса
+          schema:
+            type: string
+            maxLength: 64
+            example: "idemp-123"
+
+
+
+в LINKS добавлен ссылка на эндпоинтстатуса
+
+
+
+
+status: 
+          $ref: '#/components/schemas/Link'
+ 
+
+Чтобы клиент мог продолжить взаимодействие через HATEOAS (получить status link)
+и добавлена новая схема:
+
+
+
+
+PollingResponse:
+      type: object
+      description: Ответ при незавершенной обработке заказа
+      properties:
+        status:
+          type: string
+          description: Текущий статус обработки
+          example: PROCESSING
+        _links:
+          $ref: '#/components/schemas/Links'
+В CreateOrderRequest добавлено чтобы видеть в заказе список товаров
+
+
+
+
+items:
+            type: string
+            maxLength: 100
+          example:
+             - "Телефон"
+             - "Ноутбук"
+        _links:
+
+
+
+
+ 4. nullable удалён, можно было бы использовать oneOf для совместимости, но не свагер указывает на ошибку
+
+
+
+deliveryProviderId:
+          type: string
+          nullable: true
+          example: "cdek"
+заменил на
+
+
+
+
+deliveryProviderId:
+          type: string
+          description: Идентификатор службы доставки
+          example: "cdek"
+
+
+
+ 5. в GET Добавлено 
+
+
+
+'404':
+          $ref: '#/components/responses/NotFound'
+соответственно к нему
+
+
+
+
+ Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+         type: integer
+         description: HTTP статус или код ошибки
+         example: 404
+        message:
+         type: string
+         description: Описание ошибки
+         example: Ресурс не найден
+и
+
+
+
+
+ NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+ 
+
+=====================
+
+в методе DELETE добавлены
+
+
+
+
+ '404':
+           $ref: '#/components/responses/NotFound'
+  '409':
+           $ref: '#/components/responses/Conflict'
+ 
+
+=====================
+
+в метод PATCH добавлены
+
+
+
+
+'400':
+          $ref: '#/components/responses/BadRequest'
+'404':
+          $ref: '#/components/responses/NotFound'
+
+
+
+
+
+6. везде в responsese дообавлены 
+
+
+
+
+schema:
+            $ref: '#/components/schemas/Error'
+в UpdateOrderRequest добавлено 
+minProperties: 1
+-------
+в Order
+добавлено
+default: "CREATED"
+--------
+в Links добавлены
+
+
+
+
+   required:
+       - href
+       - method
+      properties:
+        href:
+          type: string
+          description: URL ресурса
+          example: "/v1/orders/123"
+        method:
+          type: string
+          enum: [GET, PATCH, DELETE]
+          description: HTTP метод
+          example: GET
+ 
+
+------
+7. в PollingResponse 
+добавлены
+
+
+
+
+required:
+       - status
+       - _links
+
+
+8. добавлены описания полей где замечено их отсутствие

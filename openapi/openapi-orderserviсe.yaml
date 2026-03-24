@@ -16,6 +16,9 @@ info:
 servers:
   - url: https://api.delivplus.com
 
+security: 
+  - bearerAuth: []
+
 paths:
 
   /v1/orders:
@@ -83,7 +86,7 @@ paths:
 
     get:
       summary: Получить заказ
-      description: Возвращает информацию о заказе
+      description: Возвращает текущее состояние заказа
       operationId: getOrder
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -93,19 +96,25 @@ paths:
           description: OK
           headers:
             X-Correlation-Id:
+              description: Идентификатор трассировки запроса
               schema:
                 type: string
                 example: "corr-123"
+            Retry-After:
+              description: Врмя ожидания перед повторным запросом в секундах
+              schema: 
+                type: integer
+                example: 3
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
         '404':
           $ref: '#/components/responses/NotFound'
-
+       
     patch:
       summary: Обновить заказ
-      description: Обновляет параметры заказа
+      description: Обновляет параметры заказа, изменяется только deliveryProviderId
       operationId: updateOrder
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -144,7 +153,7 @@ paths:
     delete:
       summary: Отмена заказа
       description: |
-        Отменяет заказ.
+        Пользователь может отменить только свой заказ
 
         Если заказ уже в финальном состоянии - вернет ошибку.
       operationId: cancelOrder
@@ -154,6 +163,12 @@ paths:
       responses:
         '204':
           description: Заказ отменен
+        '403':
+          description: Forbidden — доступ запрещен (заказ не принадлежит пользователю)
+          content:
+           application/json:
+            schema:
+             $ref: '#/components/schemas/Error'
         '404':
            $ref: '#/components/responses/NotFound'
         '409':
@@ -161,33 +176,7 @@ paths:
 
   /v1/orders/{orderId}/status:
 
-    get:
-      summary: Polling статуса заказа
-      description: |
-        Используется для отслеживания статуса асинхронного заказа.
-
-        Поддерживает long-polling.
-      operationId: pollStatus
-      parameters:
-        - $ref: '#/components/parameters/CorrelationId'
-        - $ref: '#/components/parameters/OrderId'
-      responses:
-        '200':
-          description: Статус готов
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-        '204':
-          description: В процессе обработки
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PollingResponse'
-        '408':
-          $ref: '#/components/responses/RequestTimeout'
-        '424':
-          $ref: '#/components/responses/FailedDependency'
+   
 
 components:
 
@@ -213,8 +202,13 @@ components:
         pattern: '^[a-zA-Z0-9\-]{1,36}$'
         example: "123"
 
-  schemas:
+  securitySchemes:   
+       bearerAuth:
+        type: http
+        scheme: bearer
 
+  schemas:
+     
     CreateOrderRequest:
       type: object
       description: Запрос на создание заказа
@@ -244,13 +238,13 @@ components:
 
     UpdateOrderRequest:
       type: object
-      description: Запрос на обновление заказа
+      description: Запрос на частичное обновление заказа - deliveryProviderId, deliveryProviderId будет выбран пользователем из списка доступных служб доставки
       additionalProperties: false
       properties:
         deliveryProviderId:
           type: string
           maxLength: 50
-          description: Идентификатор службы доставки
+          description: Идентификатор выбраннойслужбы доставки
           example: "cdek"
       minProperties: 1
 
@@ -286,11 +280,16 @@ components:
           type: string
           description: Уникальный идентификатор заказа
           example: "123"
+        userID:
+          type: string
+          description: Идентификатор владельца заказа (из access token)
+          example: "user-123"
         status:
           type: string
           description: Текущий статус заказа
           enum:
             - CREATED
+            - PROCESSING
             - DELIVERY_SELECTED
             - PAID
             - PAYMENT_FAILED
@@ -299,7 +298,7 @@ components:
           example: "CREATED"
         deliveryProviderId:
           type: string
-          description: Идентификатор службы доставки
+          description: Идентификатор службы доставки deliveryProviderId является внешним значением, формируемым клиентским приложением на основе данных, полученных из Aggregator Service. Order Service не владеет списком доступных служб и не выполняет их валидацию, а только сохраняет переданное значение.
           example: "cdek"
         address:
           type: string
@@ -317,20 +316,7 @@ components:
         _links:
           $ref: '#/components/schemas/Links'
     
-    PollingResponse:
-      type: object
-      description: Ответ при незавершенной обработке заказа
-      required:
-       - status
-       - _links
-      properties:
-        status:
-          type: string
-          description: Текущий статус обработки
-          example: PROCESSING
-        _links:
-          $ref: '#/components/schemas/Links'
-    
+   
     Error:
       type: object
       required:
@@ -397,6 +383,8 @@ components:
           description: HTTP метод для перехода по ссылке
           enum: [GET, PATCH, DELETE]
           example: "GET"
+
+   
 
   responses:
 

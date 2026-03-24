@@ -112,8 +112,8 @@ paths:
         - $ref: '#/components/parameters/OrderId'
         - in: header
           name: Idempotency-Key
-          required: false
-          description: Добавлен Ключ идемпотентности для безопасного повторения запроса
+          required: true
+          description: Добавлен Ключ идемпотентности для безопасного повторения запроса и Исправлен с опционального на обязательный
           schema:
             type: string
             maxLength: 64

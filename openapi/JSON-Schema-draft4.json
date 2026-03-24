@@ -1,51 +1,69 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Order Service JSON Schema",
+  "description": "JSON Schema Draft 4 для валидации данных Order Service API",
+
   "definitions": {
 
     "CreateOrderRequest": {
       "type": "object",
-      "required": ["address", "items"],
+      "description": "Запрос на создание заказа",
       "additionalProperties": false,
+      "required": ["address", "items"],
       "properties": {
         "address": {
           "type": "string",
-          "maxLength": 255
+          "description": "Адрес доставки",
+          "maxLength": 255,
+          "example": "Россия, г. Краснодар, ул. Красная, д. 25, кв. 12"
         },
         "items": {
           "type": "array",
+          "description": "Список товаров",
           "minItems": 1,
           "maxItems": 20,
           "items": {
             "type": "string",
-            "maxLength": 100
-          }
+            "description": "Название товара",
+            "maxLength": 100,
+            "example": "Телефон"
+          },
+          "example": ["Телефон", "Ноутбук"]
         }
       }
     },
 
     "UpdateOrderRequest": {
       "type": "object",
+      "description": "Частичное обновление заказа (только deliveryProviderId)",
       "additionalProperties": false,
       "minProperties": 1,
       "properties": {
         "deliveryProviderId": {
           "type": "string",
-          "maxLength": 50
+          "description": "Идентификатор выбранной службы доставки. Выбирается клиентом на основе данных Aggregator Service.",
+          "maxLength": 50,
+          "example": "cdek"
         }
       }
     },
 
     "OrderAsyncResponse": {
       "type": "object",
-      "required": ["orderId", "status", "_links"],
+      "description": "Ответ при асинхронном создании заказа",
       "additionalProperties": false,
+      "required": ["orderId", "status", "_links"],
       "properties": {
         "orderId": {
-          "type": "string"
+          "type": "string",
+          "description": "Идентификатор заказа",
+          "example": "123"
         },
         "status": {
           "type": "string",
-          "enum": ["CREATED", "PROCESSING"]
+          "description": "Статус обработки заказа",
+          "enum": ["CREATED", "PROCESSING"],
+          "example": "CREATED"
         },
         "_links": {
           "$ref": "#/definitions/Links"
@@ -55,12 +73,22 @@
 
     "Order": {
       "type": "object",
+      "description": "Сущность заказа",
+      "additionalProperties": false,
       "properties": {
         "orderId": {
-          "type": "string"
+          "type": "string",
+          "description": "Уникальный идентификатор заказа",
+          "example": "123"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Идентификатор владельца заказа (из access token)",
+          "example": "user-123"
         },
         "status": {
           "type": "string",
+          "description": "Текущий статус заказа",
           "enum": [
             "CREATED",
             "PROCESSING",
@@ -69,20 +97,27 @@
             "PAYMENT_FAILED",
             "CANCELLED"
           ],
-          "default": "CREATED"
+          "default": "CREATED",
+          "example": "CREATED"
         },
         "deliveryProviderId": {
-          "type": "string"
+          "type": "string",
+          "description": "Идентификатор службы доставки. Значение приходит из клиента (Aggregator Service). В Order Service не валидируется.",
+          "example": "cdek"
         },
         "address": {
-          "type": "string"
+          "type": "string",
+          "description": "Адрес доставки",
+          "example": "Россия, г. Новороссийск, ул. Советов, д. 10"
         },
         "items": {
           "type": "array",
+          "description": "Список товаров",
           "items": {
             "type": "string",
             "maxLength": 100
-          }
+          },
+          "example": ["Телефон", "Ноутбук"]
         },
         "_links": {
           "$ref": "#/definitions/Links"
@@ -92,58 +127,62 @@
 
     "Error": {
       "type": "object",
+      "description": "Стандартная ошибка API",
       "required": ["code", "message"],
       "properties": {
         "code": {
-          "type": "integer"
+          "type": "integer",
+          "description": "HTTP код ошибки",
+          "example": 404
         },
         "message": {
-          "type": "string"
+          "type": "string",
+          "description": "Описание ошибки",
+          "example": "Ресурс не найден"
         },
         "details": {
-          "type": "string"
+          "type": "string",
+          "description": "Технические детали ошибки",
+          "example": "Order not found"
         }
       }
     },
 
     "Links": {
       "type": "object",
+      "description": "HATEOAS ссылки",
       "required": ["href", "method"],
       "properties": {
         "href": {
-          "type": "string"
+          "type": "string",
+          "description": "URL ресурса",
+          "example": "/v1/orders/123"
         },
         "method": {
           "type": "string",
-          "enum": ["GET", "PATCH", "DELETE"]
-        },
-        "self": {
-          "$ref": "#/definitions/Link"
-        },
-        "update": {
-          "$ref": "#/definitions/Link"
-        },
-        "cancel": {
-          "$ref": "#/definitions/Link"
-        },
-        "status": {
-          "$ref": "#/definitions/Link"
+          "enum": ["GET", "PATCH", "DELETE"],
+          "description": "HTTP метод",
+          "example": "GET"
         }
       }
     },
 
     "Link": {
       "type": "object",
+      "description": "Гипермедиа ссылка",
       "properties": {
         "href": {
-          "type": "string"
+          "type": "string",
+          "description": "URL ресурса",
+          "example": "/v1/orders/123"
         },
         "method": {
           "type": "string",
-          "enum": ["GET", "PATCH", "DELETE"]
+          "enum": ["GET", "PATCH", "DELETE"],
+          "description": "HTTP метод",
+          "example": "GET"
         }
       }
     }
-
   }
 }

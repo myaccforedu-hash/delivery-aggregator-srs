@@ -189,3 +189,88 @@ required:
 
 
 8. добавлены описания полей где замечено их отсутствие
+
+
+
+
+
+
+
+после ревью 2
+
+Не вижу глобальных отличий между GET-запросами, можно оставить GET /v1/orders/{orderId}, второй дропнуть, но описание ошибок перенести в единый метод + почему говорим именно про polling, в не long-polling?
+
+Не увидел описание JSON-схемы;
+
+Правильно понимаю, что можно обновить только службу доставки? Если да, то причем тут обновление заказа?
+
+А как-то служба доставки выбирается?
+
+Я могу отменить не свой заказ?
+
+
+
+
+Удаляю полностью:
+
+
+
+ get:
+      summary: Polling статуса заказа
+      description: |
+        Используется для отслеживания статуса асинхронного заказа.
+        Поддерживает long-polling.
+      operationId: pollStatus
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Статус готов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '204':
+          description: В процессе обработки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PollingResponse'
+        '408':
+          $ref: '#/components/responses/RequestTimeout'
+        '424':
+          $ref: '#/components/responses/FailedDependency'
+Удалил PollingResponse из схем
+добавил processing для статуса шибки не все перенес так как 424 у нас нет зависимости от другой операции мы двигаемся поэтапно и 408 не перенес так как у нас нет ожидания от клиента
+
+
+
+enum:
+            - CREATED
+            - PROCESSING
+            - DELIVERY_SELECTED
+            - PAID
+            - PAYMENT_FAILED
+            - CANCELLED
+Выбрал polling чтобы ответ получать сразу и было не сложно в реализации, чтобы было меньше нагрузки на сервер
+2. добавил JSON схему
+3.Внес пояснение в UpdateOrderReques как 
+
+Запрос на частичное обновление заказа
+мы изменяем только часть заказа deliveryProviderId
+ 4. внёс комментарий в документацию согласно флоу - 
+
+Идентификатор службы доставки deliveryProviderId является внешним значением, формируемым клиентским приложением на основе данных, полученных из Aggregator Service. Order Service не владеет списком доступных служб и не выполняет их валидацию, а только сохраняет переданное значение.
+ 5.добавлено userId который извлекается не в orderservice из токена и добавлено security: 
+
+bearerAuth: [] 
+
+и добавлено в components:
+
+
+
+securitySchemes:   
+       bearerAuth:
+        type: http
+        scheme: bearer

@@ -174,9 +174,6 @@ paths:
         '409':
            $ref: '#/components/responses/Conflict'
 
-  /v1/orders/{orderId}/status:
-
-   
 
 components:
 
@@ -203,9 +200,9 @@ components:
         example: "123"
 
   securitySchemes:   
-       bearerAuth:
-        type: http
-        scheme: bearer
+    bearerAuth:
+      type: http
+      scheme: bearer
 
   schemas:
      
@@ -235,7 +232,6 @@ components:
           example:
             - "Телефон"
             - "Ноутбук"
-
     UpdateOrderRequest:
       type: object
       description: Запрос на частичное обновление заказа - deliveryProviderId, deliveryProviderId будет выбран пользователем из списка доступных служб доставки
@@ -244,7 +240,7 @@ components:
         deliveryProviderId:
           type: string
           maxLength: 50
-          description: Идентификатор выбраннойслужбы доставки
+          description: Идентификатор выбранной службы доставки
           example: "cdek"
       minProperties: 1
 
@@ -269,8 +265,10 @@ components:
            - PROCESSING
           example: "CREATED"
         _links:
-           $ref: '#/components/schemas/Links'
-          
+          type: array
+          description: HATEOAS ссылки
+          items:
+            $ref: '#/components/schemas/Link'
 
     Order:
       type: object
@@ -314,9 +312,11 @@ components:
              - "Телефон"
              - "Ноутбук"
         _links:
-          $ref: '#/components/schemas/Links'
+          type: array
+          description: HATEOAS ссылки
+          items:
+            $ref: '#/components/schemas/Link'
     
-   
     Error:
       type: object
       required:
@@ -336,44 +336,18 @@ components:
           description: Дополнительная техническая информация об ошибке (например, детали валидации)
           example: Order not found
 
-    Links:
-      type: object
-      description: HATEOAS ссылки
-      required:
-       - href
-       - method
-      properties:
-        href:
-          type: string
-          description: URL ресурса
-          example: "/v1/orders/123"
-        method:
-          type: string
-          enum: [GET, PATCH, DELETE]
-          description: HTTP метод
-          example: GET
-        self:
-          allOf:
-            - $ref: '#/components/schemas/Link'
-          description: Ссылка на текущий ресурс
-        update:
-          allOf:
-            - $ref: '#/components/schemas/Link'
-          description: Ссылка для обновления заказа
-        cancel:
-          allOf:
-            - $ref: '#/components/schemas/Link'
-          description: Ссылка для отмены заказа
-        status: 
-          allOf:
-            - $ref: '#/components/schemas/Link'
-          description: Ссылка для получения статуса заказа
-          
-
     Link:
       type: object
       description: Гипермедиа ссылка
+      required:
+        - rel
+        - href
+        - method
       properties:
+        rel:
+          type: string
+          description: Тип ссылки (self, update, cancel, status)
+          example: self
         href:
           type: string
           description: URL ресурса
@@ -383,8 +357,6 @@ components:
           description: HTTP метод для перехода по ссылке
           enum: [GET, PATCH, DELETE]
           example: "GET"
-
-   
 
   responses:
 

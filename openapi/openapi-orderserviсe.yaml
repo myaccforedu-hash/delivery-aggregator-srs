@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.1.0
 
 info:
   title: Order Service API
@@ -8,9 +8,10 @@ info:
 
     Поддерживает:
     - асинхронное создание заказа
+    - получение списка заказов
     - обновление заказа
     - отмену заказа
-    - получение статуса через polling
+    - получение статуса
     - HATEOAS
 
 servers:
@@ -21,15 +22,17 @@ security:
 
 paths:
 
-  /v1/orders:
+ /v1/orders:
 
-    post:
+  post:
       summary: Создание заказа (асинхронно)
       description: |
         Создает заказ в асинхронном режиме.
-
+        Создать заказ может только аутентифицированный пользователь.
+        userId извлекается из access token на стороне сервера и не передается клиентом.
         Возвращает 202 Accepted.
         Обработка выполняется асинхронно, статус отслеживается через polling.
+        Если тот же ключ используется с другим телом запроса — возвращается 409 Conflict
       operationId: createOrder
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -38,12 +41,14 @@ paths:
           required: true
           description: |
             Уникальный ключ идемпотентности.
-
             Используется для предотвращения дублирования заказов.
+            Idempotency-Key хранится ограниченное время (например, 24 часа)
           schema:
-            type: string
-            maxLength: 64
-            example: "idemp-123"
+             type: string
+             maxLength: 64
+             minLength: 1
+             examples: 
+              - "idemp-123"
       requestBody:
         required: true
         description: Данные заказа
@@ -62,27 +67,124 @@ paths:
               description: URL для проверки статуса
               schema:
                 type: string
-                example: "/v1/orders/123/status"
+                examples: 
+                  - "/v1/orders/123/status"
             Retry-After:
               description: Время ожидания перед повторным запросом
               schema:
                 type: integer
-                example: 3
+                examples: 
+                  - 3
             X-Correlation-Id:
               description: Идентификатор трассировки
               schema:
                 type: string
-                example: "corr-123"
+                examples: 
+                  - "corr-123"
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/OrderAsyncResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
-  /v1/orders/{orderId}:
+   
+  get:
+    summary: Получить список заказов
+    description: |
+      Возвращает список заказов текущего аутентифицированного пользователя.
+      Поддерживается фильтрация по статусу и пагинация с помощью параметров `limit` и `offset`.
+    operationId: listOrders
+    parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      - in: query
+        name: status
+        required: true
+        schema:
+          type: string
+          enum: [CREATED, PROCESSING, DELIVERY_SELECTED, PAID, PAYMENT_FAILED, CANCELLED]
+        description: Фильтр по статусу заказа
+      - in: query
+        name: limit
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Количество заказов на странице
+      - in: query
+        name: offset
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+        description: Смещение для пагинации
+    responses:
+      '200':
+        description: Список заказов пользователя
+        headers:
+          X-Correlation-Id:
+            description: Идентификатор трассировки запроса
+            schema:
+              type: string
+              examples: 
+                - "corr-123"
+          X-Total-Count:
+            description: Общее количество заказов, соответствующих фильтру
+            schema:
+              type: integer
+              examples: 
+                - 57
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Order'
+            example:
+              - orderId: "123"
+                userId: "user-123"
+                status: "CREATED"
+                deliveryProviderId: "cdek"
+                address: "Россия, г. Новороссийск, ул. Советов, д. 10, кв. 45"
+                items:
+                  - "Телефон"
+                  - "Ноутбук"
+                _links:
+                  - rel: self
+                    href: "/v1/orders/123"
+                    method: GET
+              - orderId: "124"
+                userId: "user-123"
+                status: "PROCESSING"
+                deliveryProviderId: "dostavista"
+                address: "Россия, г. Краснодар, ул. Красная, д. 25, кв. 12"
+                items:
+                  - "Монитор"
+                _links:
+                  - rel: self
+                    href: "/v1/orders/124"
+                    method: GET
+      '400':
+        $ref: '#/components/responses/BadRequest'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '429':
+        $ref: '#/components/responses/TooManyRequests'
+
+ /v1/orders/{orderId}:
 
     get:
       summary: Получить заказ
@@ -99,22 +201,29 @@ paths:
               description: Идентификатор трассировки запроса
               schema:
                 type: string
-                example: "corr-123"
+                examples: 
+                  - "corr-123"
             Retry-After:
               description: Врмя ожидания перед повторным запросом в секундах
               schema: 
                 type: integer
-                example: 3
+                examples: 
+                  - 3
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        
        
     patch:
       summary: Обновить заказ
-      description: Обновляет параметры заказа, изменяется только deliveryProviderId
+      description: Обновляет параметры заказа, изменяется только deliveryProviderId. Требует аутентификации.  Пользователь может обновить только свой заказ.
       operationId: updateOrder
       parameters:
         - $ref: '#/components/parameters/CorrelationId'
@@ -122,11 +231,13 @@ paths:
         - in: header
           name: Idempotency-Key
           required: true
-          description: Добавлен Ключ идемпотентности для безопасного повторения запроса и Исправлен с опционального на обязательный
+          description: Добавлен Ключ идемпотентности для безопасного повторения  запроса и Исправлен с опционального на обязательный, Idempotency-Key хранится ограниченное время (например, 24 часа)
           schema:
             type: string
             maxLength: 64
-            example: "idemp-123"
+            minLength: 1
+            examples: 
+              - "idemp-123"
       requestBody:
         required: true
         description: Данные для обновления
@@ -154,7 +265,7 @@ paths:
       summary: Отмена заказа
       description: |
         Пользователь может отменить только свой заказ
-
+        Требует аутентификации.
         Если заказ уже в финальном состоянии - вернет ошибку.
       operationId: cancelOrder
       parameters:
@@ -163,14 +274,12 @@ paths:
       responses:
         '204':
           description: Заказ отменен
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden — доступ запрещен (заказ не принадлежит пользователю)
-          content:
-           application/json:
-            schema:
-             $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Forbidden'
         '404':
-           $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/NotFound'
         '409':
            $ref: '#/components/responses/Conflict'
 
@@ -187,7 +296,9 @@ components:
       schema:
         type: string
         maxLength: 64
-        example: "corr-123"
+        format: uuid 
+        examples: 
+          - "corr-123"
 
     OrderId:
       name: orderId
@@ -197,7 +308,9 @@ components:
       schema:
         type: string
         pattern: '^[a-zA-Z0-9\-]{1,36}$'
-        example: "123"
+        maxLength: 36
+        examples: 
+          - "123"
 
   securitySchemes:   
     bearerAuth:
@@ -218,7 +331,9 @@ components:
           type: string
           description: Адрес доставки
           maxLength: 255
-          example: "Россия, г. Краснодар, ул. Красная, д. 25, кв. 12"
+          minLength: 6
+          examples: 
+            - "Россия, г. Краснодар, ул. Красная, д. 25, кв. 12"
         items:
           type: array
           description: Список товаров
@@ -227,21 +342,27 @@ components:
           items:
             type: string
             description: Название товара
+            minLength: 1
             maxLength: 100
-            example: "Телефон"
-          example:
-            - "Телефон"
-            - "Ноутбук"
+            examples: 
+              - "Телефон"
+              - "Ноутбук"
+        
+
     UpdateOrderRequest:
       type: object
       description: Запрос на частичное обновление заказа - deliveryProviderId, deliveryProviderId будет выбран пользователем из списка доступных служб доставки
       additionalProperties: false
+      required: 
+        - deliveryProviderId
       properties:
         deliveryProviderId:
           type: string
-          maxLength: 50
           description: Идентификатор выбранной службы доставки
-          example: "cdek"
+          minLength: 1
+          maxLength: 50
+          examples: 
+            - "cdek"
       minProperties: 1
 
     OrderAsyncResponse:
@@ -256,35 +377,59 @@ components:
         orderId:
           type: string
           description: Идентификатор созданного заказа
-          example: "123"
+          maxLength: 36
+          minLength: 1
+          examples: 
+            - "123"
         status:
           type: string
           description: Статус обработки заказа
+          maxLength: 10
+          minLength: 1
           enum:
            - CREATED
            - PROCESSING
-          example: "CREATED"
+          examples: 
+            - "CREATED"
         _links:
           type: array
           description: HATEOAS ссылки
+          minItems: 1
+          maxItems: 10
           items:
             $ref: '#/components/schemas/Link'
 
     Order:
       type: object
       description: Сущность заказа
+      required: 
+        - orderId
+        - userId
+        - status
+        - deliveryProviderId
+        - address
+        - items
+        - _links
+      additionalProperties: false
       properties:
         orderId:
           type: string
           description: Уникальный идентификатор заказа
-          example: "123"
-        userID:
+          maxLength: 36
+          minLength: 1
+          examples:  
+            - "123"
+        userId:
           type: string
-          description: Идентификатор владельца заказа (из access token)
-          example: "user-123"
+          description: Идентификатор пользователя извлекается из access token и не передается в API явно. Все операции выполняются от имени аутентифицированного пользователя.
+          maxLength: 36
+          minLength: 1
+          examples: 
+            - "user-123"
         status:
           type: string
           description: Текущий статус заказа
+          maxLength: 10
           enum:
             - CREATED
             - PROCESSING
@@ -293,27 +438,38 @@ components:
             - PAYMENT_FAILED
             - CANCELLED
           default: "CREATED"
-          example: "CREATED"
+          examples: 
+            - "CREATED"
         deliveryProviderId:
           type: string
           description: Идентификатор службы доставки deliveryProviderId является внешним значением, формируемым клиентским приложением на основе данных, полученных из Aggregator Service. Order Service не владеет списком доступных служб и не выполняет их валидацию, а только сохраняет переданное значение.
-          example: "cdek"
+          maxLength: 50
+          minLength: 1
+          examples: 
+            - "cdek"
         address:
           type: string
           description: Адрес доставки
-          example: "Россия, г. Новороссийск, ул. Советов, д. 10, кв. 45"
+          maxLength: 255
+          minLength: 5
+          examples: 
+            - "Россия, г. Новороссийск, ул. Советов, д. 10, кв. 45"
         items:
           type: array
           description: Список товаров в заказе
+          minItems: 1
+          maxItems: 20
           items:
-            type: string
-            maxLength: 100
-          example:
+           type: string
+           maxLength: 100
+           examples:
              - "Телефон"
              - "Ноутбук"
         _links:
           type: array
           description: HATEOAS ссылки
+          minItems: 1
+          maxItems: 10
           items:
             $ref: '#/components/schemas/Link'
     
@@ -322,19 +478,27 @@ components:
       required:
         - code
         - message
+      additionalProperties: false
       properties:
         code:
          type: integer
          description: HTTP статус или код ошибки
-         example: 404
+         format: int32
+         examples: 
+          - 404
         message:
          type: string
          description: Описание ошибки
-         example: Ресурс не найден
+         maxLength: 255
+         minLength: 1
+         examples: 
+          - Ресурс не найден
         details:
           type: string
           description: Дополнительная техническая информация об ошибке (например, детали валидации)
-          example: Order not found
+          maxLength: 500
+          examples: 
+            - Order not found
 
     Link:
       type: object
@@ -343,20 +507,30 @@ components:
         - rel
         - href
         - method
+      additionalProperties: false
       properties:
         rel:
           type: string
           description: Тип ссылки (self, update, cancel, status)
-          example: self
+          maxLength: 10
+          minLength: 1
+          examples: 
+            - self
         href:
           type: string
           description: URL ресурса
-          example: "/v1/orders/123"
+          maxLength: 255
+          minLength: 1
+          examples: 
+            - "/v1/orders/123"
         method:
           type: string
           description: HTTP метод для перехода по ссылке
+          maxLength: 6
+          minLength: 3
           enum: [GET, PATCH, DELETE]
-          example: "GET"
+          examples: 
+            - "GET"
 
   responses:
 
@@ -369,6 +543,7 @@ components:
           example:
             code: 400
             message: "Invalid request"
+            details: "Поле address не может быть пустым"
 
     Conflict:
       description: Конфликт состояния
@@ -429,3 +604,23 @@ components:
           example:
             code: 404
             message: "Not Found"
+
+    Unauthorized:
+       description: Пользователь не аутентифицирован
+       content:
+         application/json:
+           schema:
+             $ref: '#/components/schemas/Error'
+           example:
+             code: 401
+             message: "Unauthorized"
+
+    Forbidden:
+      description: Доступ к чужому заказу запрещен
+      content:
+        application/json:
+         schema:
+           $ref: '#/components/schemas/Error'
+         example:
+           code: 403
+           message: "Forbidden"  

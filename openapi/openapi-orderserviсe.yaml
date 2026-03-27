@@ -286,7 +286,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-           $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/Conflict'
 
 
 components:
@@ -483,6 +483,7 @@ components:
       required:
         - code
         - message
+        - details
       additionalProperties: false
       properties:
         code:
@@ -559,6 +560,7 @@ components:
           example:
             code: 409
             message: "Order already completed"
+            details: "Заказ уже находится в финальном статусе"
 
     Locked:
       description: Ресурс заблокирован
@@ -569,6 +571,7 @@ components:
           example:
             code: 423
             message: "Resource is locked"
+            details: "Заказ недоступен для изменения" 
 
     TooManyRequests:
       description: Превышен лимит запросов
@@ -579,6 +582,7 @@ components:
           example:
             code: 429
             message: "Too many requests"
+            details: "Превышен лимит запросов, попробуйте позже"
 
     RequestTimeout:
       description: Таймаут
@@ -589,6 +593,7 @@ components:
           example:
             code: 408
             message: "Timeout"
+            details: "Время ожидания запроса истекло"
 
     FailedDependency:
       description: Ошибка внешнего сервиса
@@ -599,6 +604,7 @@ components:
           example:
             code: 424
             message: "External service error"
+            details: "Не удалось выполнить операцию из-за ошибки зависимого сервиса"
 
     NotFound:
       description: Ресурс не найден
@@ -609,6 +615,7 @@ components:
           example:
             code: 404
             message: "Not Found"
+            details: "Заказ с указанным orderId не найден"
 
     Unauthorized:
        description: Пользователь не аутентифицирован
@@ -619,6 +626,7 @@ components:
            example:
              code: 401
              message: "Unauthorized"
+             details: "Требуется аутентификация для доступа к ресурсу"
 
     Forbidden:
       description: Доступ к чужому заказу запрещен
@@ -629,3 +637,4 @@ components:
          example:
            code: 403
            message: "Forbidden"  
+           details: "Нельзя выполнять операции с чужим заказом"
